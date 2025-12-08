@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
-import { GoogleGenAI, Type, Schema } from '@google/genai';
+import { Type, Schema } from '@google/genai';
 import { 
   Home, 
   BookOpen, 
@@ -34,7 +34,8 @@ import StudioCMS from './StudioCMS';
 import { STYLE_BIBLE } from './StyleBible';
 
 // --- API & Config ---
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// Backend not connected – placeholder
+const ai = null;
 
 // --- Helper: Retry Logic for Rate Limits ---
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
@@ -331,6 +332,20 @@ const Reader = ({ book, onClose }: { book: Book, onClose: () => void }) => {
     setSelectedWord(cleanWord);
     setShadowedWords(prev => new Set(prev).add(cleanWord));
     setLoading(true);
+
+    if (!ai) {
+      console.warn("AI waiting for backend");
+      setAnalysis({
+        word: cleanWord,
+        translation: "Backend Required",
+        partOfSpeech: "System",
+        contextMeaning: "AI features are currently disabled.",
+        exampleSentence: "Connect a backend to see translations.",
+        grammaticalNote: "Please configure the backend to enable real-time analysis."
+      });
+      setLoading(false);
+      return;
+    }
 
     try {
       // 2. Fetch Data (Async)
@@ -694,6 +709,10 @@ const App = () => {
   // --- Gemini Generators for Studio (Wrapped with Retry) ---
 
   const generateTitles = async (brief: Brief & { pages: number, scene?: string }): Promise<string[]> => {
+    if (!ai) {
+        console.warn("AI waiting for backend");
+        return [];
+    }
     return generateWithRetry(async () => {
       const prompt = `${STYLE_BIBLE}
 /////////////////////////////////////////////////////////////////////
@@ -737,6 +756,11 @@ Generate 5 titles and return pure JSON array.`;
   };
 
   const generateOutline = async (brief: Brief): Promise<string[]> => {
+    if (!ai) {
+        console.warn("AI waiting for backend");
+        alert("Backend required for AI generation");
+        return [];
+    }
     return generateWithRetry(async () => {
       const prompt = `${STYLE_BIBLE}
       Act as a German book author. Create a chapter outline for a ${brief.level} level ${brief.genre} story.
@@ -768,6 +792,10 @@ Generate 5 titles and return pure JSON array.`;
   };
 
   const generateChapter = async (title: string, brief: Brief): Promise<string> => {
+    if (!ai) {
+        console.warn("AI waiting for backend");
+        return "Backend required to generate chapter content.";
+    }
     return generateWithRetry(async () => {
       const prompt = `${STYLE_BIBLE}
       Write Chapter "${title}" for a German ${brief.genre} story (Level ${brief.level}).
@@ -786,6 +814,10 @@ Generate 5 titles and return pure JSON array.`;
   const generateCover = async (sceneDescription: string): Promise<string> => {
       // NOTE: Using a placeholder service or text-to-image API if available.
       // Retrying extracting keywords just in case.
+      if (!ai) {
+        console.warn("AI waiting for backend");
+        return "";
+      }
       return generateWithRetry(async () => {
         const kwResponse = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
@@ -797,6 +829,10 @@ Generate 5 titles and return pure JSON array.`;
   };
 
   const generateSlug = async (title: string): Promise<string> => {
+    if (!ai) {
+        console.warn("AI waiting for backend");
+        return "backend-required-slug";
+    }
     return generateWithRetry(async () => {
       const prompt = `${STYLE_BIBLE}
       Task: Generate a URL-friendly SEO slug for the book title "${title}".
@@ -812,6 +848,10 @@ Generate 5 titles and return pure JSON array.`;
   };
 
   const generateMeta = async (title: string, context: string): Promise<string> => {
+    if (!ai) {
+        console.warn("AI waiting for backend");
+        return "Backend required for meta description.";
+    }
     return generateWithRetry(async () => {
       const prompt = `${STYLE_BIBLE}
       Task: Write an SEO meta description for the book "${title}".

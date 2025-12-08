@@ -1,6 +1,4 @@
-
 import React, { useState, useEffect } from 'react';
-import { GoogleGenAI } from '@google/genai';
 import { 
   Wand2, 
   ChevronRight, 
@@ -16,7 +14,8 @@ import {
   Link,
   Search,
   X,
-  Type
+  Type,
+  AlertTriangle
 } from 'lucide-react';
 import { Brief, DraftBook, DraftChapter } from './types';
 import { STYLE_BIBLE } from './StyleBible';
@@ -40,7 +39,7 @@ export default function StudioCMS({
   onGenerateChapter, 
   onGenerateCover, 
   onPublish,
-  onGenerateTitles, // New prop
+  onGenerateTitles, 
   onGenerateSlug,
   onGenerateMeta,
   onCancel 
@@ -120,47 +119,19 @@ export default function StudioCMS({
         titles = await onGenerateTitles({ ...brief, pages, scene: coverPrompt });
       } else {
         // Internal Fallback using Browser SDK with Basic Retry
+        // Backend not connected – placeholder
+        const ai = null;
+        if (!ai) {
+          console.warn("AI waiting for backend");
+          alert("Backend required for AI generation");
+          setGenLoading(prev => ({...prev, title: false}));
+          setIsPickingTitle(false);
+          return;
+        }
+
         const generateWithLocalRetry = async (retries = 3): Promise<any> => {
-           try {
-              const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-              const prompt = `${STYLE_BIBLE}
-/////////////////////////////////////////////////////////////////////
-Title-Engine v3 – Viral-Movie Brain
-/////////////////////////////////////////////////////////////////////
-Role: senior Netflix thumbnail copywriter + CEFR curriculum editor.  
-Input: level=${brief.level}, genre=${brief.genre}, ≈${pages} pages${coverPrompt ? `, scene=${coverPrompt}` : ''}.  
-Output: 5 JSON strings only:  
-["title1","title2","title3","title4","title5"]
-
-Rules per title:  
-- 1 noun-phrase, **NO dash**, ≤ 6 words, **unique metaphor or emotion**.  
-- Genre twist table:  
-  Krimi   → use **time pressure** or **body part** (Finger, Stunde, Herz).  
-  Liebe   → use **forbidden object** or **weather** (Regen, Fahrschein, Glühwein).  
-  Fantasy → use **contradiction** (Eis + Feuer, stummer Schrei).  
-  Alltag  → use **absurd escalation** (Kaffeemaschine, 1 % Akku, falsche Tasche).  
-- Avoid clichés: no “Geheimnisvolle”, “Tödliche”, “Gestohlener Ring”, “Verlorene Nachricht”.  
-- Spark **morbid curiosity** or **empathy** → reader **must** click.  
-- Still CEFR-friendly vocabulary (level hint in brackets).  
-Examples:  
-  A2 Krimi  → "Herz unter dem Tisch", "Stunde 23:59", "Finger im Kaffee".  
-  A2 Liebe  → "Regen in ihrer Tasche", "Fahrschein nach nirgendwo".  
-  B1 Fantasy→ "Eis, das singt", "Stumme Flammen", "Traum ohne Schlaf".  
-/////////////////////////////////////////////////////////////////////
-Generate 5 titles and return pure JSON array.`;
-
-              const response = await ai.models.generateContent({
-                model: 'gemini-2.5-flash',
-                contents: prompt
-              });
-              return response;
-           } catch(err: any) {
-              if (retries > 0 && (err?.status === 429 || err?.message?.includes('429'))) {
-                 await delay(2000);
-                 return generateWithLocalRetry(retries - 1);
-              }
-              throw err;
-           }
+           // Placeholder for strict type compliance if AI were present
+           return Promise.reject("No AI");
         };
 
         const response = await generateWithLocalRetry();
@@ -195,6 +166,9 @@ Generate 5 titles and return pure JSON array.`;
     setLoading(true);
     try {
       const generatedOutline = await onGenerateOutline(brief);
+      if (!generatedOutline || generatedOutline.length === 0) {
+        throw new Error("No outline generated");
+      }
       const cleanedOutline = generatedOutline
         .map(cleanChapterTitle)
         .slice(0, 6);
@@ -211,7 +185,7 @@ Generate 5 titles and return pure JSON array.`;
       if (e?.status === 429 || e?.message?.includes('429')) {
          alert('Quota exceeded. Please wait a moment.');
       } else {
-         alert('Failed to generate outline');
+         alert('Failed to generate outline (Backend Required)');
       }
     } finally {
       setLoading(false);
@@ -238,14 +212,20 @@ Generate 5 titles and return pure JSON array.`;
   };
 
   const handleGenerateCover = async () => {
-    if (!coverPrompt || !onGenerateCover) return;
+    if (!coverPrompt) return;
     setGenLoading(prev => ({ ...prev, cover: true }));
     try {
-      const url = await onGenerateCover(coverPrompt);
-      setCoverUrl(url);
+      // Cast import.meta to any to avoid "Property 'env' does not exist on type 'ImportMeta'" TS error
+      const response = await fetch(`${(import.meta as any).env.VITE_COVER_URL}${encodeURIComponent(coverPrompt)}?width=768&height=1152`);
+      if (response.ok) {
+        const url = await response.text();
+        setCoverUrl(url);
+      } else {
+        throw new Error('Image generation failed');
+      }
     } catch (e) {
       console.error(e);
-      alert('Generation failed – try again');
+      alert('Bild fehlgeschlagen – nochmal');
     } finally {
       setGenLoading(prev => ({ ...prev, cover: false }));
     }
@@ -352,6 +332,15 @@ Generate 5 titles and return pure JSON array.`;
 
       <div className="flex-1 overflow-y-auto custom-scrollbar p-6 md:p-12">
         <div className="max-w-4xl mx-auto">
+          {/* Backend Missing Banner */}
+          <div className="mb-8 bg-yellow-500/10 border-l-4 border-yellow-500 p-4 rounded-r flex items-start gap-3">
+             <AlertTriangle className="w-5 h-5 text-yellow-500 flex-shrink-0 mt-0.5" />
+             <div>
+                <h3 className="text-yellow-500 font-bold text-sm">Backend Disconnected</h3>
+                <p className="text-yellow-200/60 text-xs mt-1">AI generation features are disabled. Connect a backend to generate titles, outlines, and chapters automatically.</p>
+             </div>
+          </div>
+
           {renderProgressBar()}
 
           <div className="bg-[#18162E] border border-white/5 rounded-2xl p-8 shadow-2xl relative overflow-hidden min-h-[500px]">
@@ -443,6 +432,7 @@ Generate 5 titles and return pure JSON array.`;
                         <button 
                           onClick={handleGenerateBatchTitles}
                           disabled={genLoading.title}
+                          title="Backend required for generation"
                           className="px-4 bg-purple-600 hover:bg-purple-500 text-white rounded-lg transition-colors flex items-center gap-2 disabled:opacity-50 min-w-[160px] justify-center"
                         >
                            {genLoading.title ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
@@ -534,6 +524,7 @@ Generate 5 titles and return pure JSON array.`;
                   <button 
                     onClick={handleGenerateOutline}
                     disabled={loading}
+                    title="Backend required"
                     className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-lg transition-colors disabled:opacity-50"
                   >
                     {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
@@ -597,6 +588,7 @@ Generate 5 titles and return pure JSON array.`;
                              <button 
                                 onClick={() => handleGenerateChapter(idx)}
                                 disabled={ch.status === 'generating'}
+                                title="Backend required"
                                 className="w-full py-1.5 rounded bg-white/5 hover:bg-purple-600 hover:text-white text-xs text-gray-400 transition-colors"
                              >
                                 {ch.status === 'done' ? 'Regenerate' : 'Generate'}
@@ -648,16 +640,12 @@ Generate 5 titles and return pure JSON array.`;
                     </div>
                     <button 
                         onClick={handleGenerateCover}
-                        disabled={!onGenerateCover || genLoading.cover || !coverPrompt}
-                        title={!onGenerateCover ? "Backend required" : ""}
+                        disabled={genLoading.cover || !coverPrompt}
                         className="w-full py-3 bg-purple-600 hover:bg-purple-500 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg font-medium transition-colors flex items-center justify-center gap-2"
                     >
                         {genLoading.cover ? <Loader2 className="w-5 h-5 animate-spin" /> : <ImageIcon className="w-5 h-5" />}
                         Generate Cover
                     </button>
-                    {!onGenerateCover && (
-                         <p className="text-xs text-red-400/80 text-center">Backend required for AI image generation</p>
-                    )}
                   </div>
 
                   <div className="w-full md:w-[300px] aspect-[2/3] bg-black/40 rounded-lg border-2 border-dashed border-gray-700 flex items-center justify-center overflow-hidden relative group">
@@ -668,12 +656,6 @@ Generate 5 titles and return pure JSON array.`;
                                 <p className="text-white font-bold text-center text-sm">{brief.genre}</p>
                             </div>
                         </>
-                    ) : !onGenerateCover ? (
-                         <div className="w-full h-full bg-gradient-to-br from-indigo-900 via-purple-900 to-black flex flex-col items-center justify-center p-6 text-center border-4 border-double border-white/20">
-                            <h3 className="font-serif text-2xl font-bold text-white leading-tight mb-4 drop-shadow-md">{metadata.title || 'Untitled Book'}</h3>
-                            <div className="w-12 h-1 bg-white/20 mb-4 rounded-full" />
-                            <p className="text-xs text-purple-200 font-mono opacity-70 leading-relaxed">AI cover will appear after backend is connected</p>
-                        </div>
                     ) : (
                         <div className="text-center text-gray-500 p-6">
                             <ImageIcon className="w-12 h-12 mx-auto mb-2 opacity-20" />
@@ -713,7 +695,8 @@ Generate 5 titles and return pure JSON array.`;
                                 <button 
                                     onClick={handleGenerateSlug}
                                     disabled={genLoading.slug}
-                                    className="text-xs text-purple-400 hover:text-purple-300 flex items-center gap-1"
+                                    title="Backend required"
+                                    className="text-xs text-purple-400 hover:text-purple-300 flex items-center gap-1 disabled:opacity-50"
                                 >
                                     {genLoading.slug && <Loader2 className="w-3 h-3 animate-spin" />}
                                     Auto-Generate
@@ -741,7 +724,8 @@ Generate 5 titles and return pure JSON array.`;
                                 <button 
                                     onClick={handleGenerateMeta}
                                     disabled={genLoading.meta}
-                                    className="text-xs text-purple-400 hover:text-purple-300 flex items-center gap-1"
+                                    title="Backend required"
+                                    className="text-xs text-purple-400 hover:text-purple-300 flex items-center gap-1 disabled:opacity-50"
                                 >
                                     {genLoading.meta && <Loader2 className="w-3 h-3 animate-spin" />}
                                     Auto-Generate
