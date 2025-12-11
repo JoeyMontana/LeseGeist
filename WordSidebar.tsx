@@ -27,7 +27,7 @@ export default function WordSidebar({ word, onClose }: WordSidebarProps) {
 
     try {
       // Cast import.meta to any to avoid "Property 'env' does not exist on type 'ImportMeta'" TS error
-      const response = await fetch(`https://text.pollinations.ai/${encodeURIComponent(word)}`);
+      const response = await fetch(`https://text.pollinations.ai/IPA|German meaning|English gloss|Example sentence|${encodeURIComponent(word)}`);
 
       if (!response.ok) {
         throw new Error('Network response was not ok');
@@ -40,13 +40,7 @@ export default function WordSidebar({ word, onClose }: WordSidebarProps) {
       const parts = cleanText.split('|');
 
       if (parts.length < 4) {
-        // Fallback if format is weird, map what we can
-        setData({
-          ipa: parts[0] || '...',
-          explanation: parts[1] || text,
-          gloss: parts[2] || '',
-          example: parts[3] || ''
-        });
+        throw new Error('Invalid format');
       } else {
         setData({
           ipa: parts[0].trim(),
