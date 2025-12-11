@@ -27,15 +27,7 @@ export default function WordSidebar({ word, onClose }: WordSidebarProps) {
 
     try {
       // Cast import.meta to any to avoid "Property 'env' does not exist on type 'ImportMeta'" TS error
-      const response = await fetch(`${(import.meta as any).env.VITE_TEXT_URL}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          prompt: `CEFR A2, 1-sentence German explanation of “${word}”, IPA, English gloss, example sentence. Plain text only. Format: IPA|Explanation|Gloss|Example`
-        })
-      });
+      const response = await fetch(`https://text.pollinations.ai/${encodeURIComponent(word)}`);
 
       if (!response.ok) {
         throw new Error('Network response was not ok');

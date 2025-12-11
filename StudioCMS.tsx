@@ -110,45 +110,25 @@ export default function StudioCMS({
     setGenLoading(prev => ({ ...prev, title: true }));
     setIsPickingTitle(true);
     setSelectedTitleIdx(null);
-    setTitleCandidates([]); // Clear previous to show skeletons
+    setTitleCandidates([]);
 
     try {
-      let titles: string[] = [];
-
-      if (onGenerateTitles) {
-        titles = await onGenerateTitles({ ...brief, pages, scene: coverPrompt });
-      } else {
-        // Internal Fallback using Browser SDK with Basic Retry
-        // Backend not connected – placeholder
-        const ai = null;
-        if (!ai) {
-          console.warn("AI waiting for backend");
-          alert("Backend required for AI generation");
-          setGenLoading(prev => ({...prev, title: false}));
-          setIsPickingTitle(false);
-          return;
-        }
-
-        const generateWithLocalRetry = async (retries = 3): Promise<any> => {
-           // Placeholder for strict type compliance if AI were present
-           return Promise.reject("No AI");
-        };
-
-        const response = await generateWithLocalRetry();
-        const text = response.text || "[]";
-        const jsonMatch = text.match(/\[.*\]/s);
-        const jsonStr = jsonMatch ? jsonMatch[0] : text;
-        titles = JSON.parse(jsonStr);
-      }
+      const prompt = `Generate 5 creative German book titles for a ${brief.level} ${brief.genre} book. Output as JSON array of strings only.`;
       
-      setTitleCandidates(titles.slice(0, 5));
+      const response = await fetch(`https://text.pollinations.ai/${encodeURIComponent(prompt)}`);
+      const text = await response.text();
+      
+      const cleanText = text.replace(/```json/g, '').replace(/```/g, '').trim();
+      const titles = JSON.parse(cleanText);
+      
+      if (Array.isArray(titles)) {
+        setTitleCandidates(titles.slice(0, 5));
+      } else {
+        throw new Error("Invalid format");
+      }
     } catch (e: any) {
       console.error("Title generation failed", e);
-      if (e?.status === 429 || e?.message?.includes('429')) {
-         alert('Quota exceeded (429). Please wait a moment or check your API plan.');
-      } else {
-         alert('Failed to generate titles. Please try again.');
-      }
+      alert('Failed to generate titles.');
       setIsPickingTitle(false);
     } finally {
       setGenLoading(prev => ({ ...prev, title: false }));
@@ -432,7 +412,7 @@ export default function StudioCMS({
                         <button 
                           onClick={handleGenerateBatchTitles}
                           disabled={genLoading.title}
-                          title="Backend required for generation"
+                          title="Generate Titles"
                           className="px-4 bg-purple-600 hover:bg-purple-500 text-white rounded-lg transition-colors flex items-center gap-2 disabled:opacity-50 min-w-[160px] justify-center"
                         >
                            {genLoading.title ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}

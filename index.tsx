@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Type, Schema } from '@google/genai';
@@ -29,8 +28,9 @@ import {
   PenTool
 } from 'lucide-react';
 import { BOOKS as INITIAL_BOOKS, CATEGORIES } from './constants';
-import { Book, Category, WordAnalysis, ViewState, Brief, DraftBook } from './types';
+import { Book, Category, ViewState, Brief, DraftBook } from './types';
 import StudioCMS from './StudioCMS';
+import WordSidebar from './WordSidebar';
 import { STYLE_BIBLE } from './StyleBible';
 
 // --- API & Config ---
@@ -260,13 +260,11 @@ const CategoryCard: React.FC<{ category: Category }> = ({ category }) => {
   );
 };
 
-// 6. Reader Interface (Split-Canvas, Psychology-First)
+// 6. Reader Interface (Full Width + Overlay Sidebar)
 const Reader = ({ book, onClose }: { book: Book, onClose: () => void }) => {
   // Theme States: 'PAPER' (Cinematic Day) | 'CAMPFIRE' (Night)
   const [theme, setTheme] = useState<'PAPER' | 'CAMPFIRE'>('PAPER');
-  const [selectedWord, setSelectedWord] = useState<string | null>(null); // Controls visual highlight only
-  const [analysis, setAnalysis] = useState<WordAnalysis | null>(null); // Controls sidebar content (persistent)
-  const [loading, setLoading] = useState(false);
+  const [selectedWord, setSelectedWord] = useState<string | null>(null);
   
   // Psychology Levers
   const [shadowedWords, setShadowedWords] = useState<Set<string>>(new Set()); // Visual trail of conquest
@@ -324,77 +322,13 @@ const Reader = ({ book, onClose }: { book: Book, onClose: () => void }) => {
 
   // --- Handlers ---
 
-  const handleWordClick = async (word: string, fullSentence: string) => {
+  const handleWordClick = (word: string) => {
     const cleanWord = word.replace(/[^\wäöüßÄÖÜ]/g, "");
     if (!cleanWord) return;
 
     // 1. Immediate Interaction
     setSelectedWord(cleanWord);
     setShadowedWords(prev => new Set(prev).add(cleanWord));
-    setLoading(true);
-
-    if (!ai) {
-      console.warn("AI waiting for backend");
-      setAnalysis({
-        word: cleanWord,
-        translation: "Backend Required",
-        partOfSpeech: "System",
-        contextMeaning: "AI features are currently disabled.",
-        exampleSentence: "Connect a backend to see translations.",
-        grammaticalNote: "Please configure the backend to enable real-time analysis."
-      });
-      setLoading(false);
-      return;
-    }
-
-    try {
-      // 2. Fetch Data (Async)
-      await generateWithRetry(async () => {
-        const prompt = `You are a gentle German language tutor. Analyze the word "${cleanWord}" in context: "${fullSentence}". 
-        Return JSON with: 
-        - translation (English)
-        - partOfSpeech (Noun, Verb, Adjective, etc.)
-        - gender (only if noun, e.g. 'der', 'die', 'das', otherwise null)
-        - contextMeaning (meaning in this specific sentence)
-        - exampleSentence (simple, beginner-friendly German sentence using this word)
-        - grammaticalNote (short note on inflection, case, or usage)`;
-
-        const response = await ai.models.generateContent({
-          model: 'gemini-2.5-flash',
-          contents: prompt,
-          config: {
-            responseMimeType: 'application/json',
-            responseSchema: {
-              type: Type.OBJECT,
-              properties: {
-                word: { type: Type.STRING },
-                translation: { type: Type.STRING },
-                partOfSpeech: { type: Type.STRING },
-                gender: { type: Type.STRING, nullable: true },
-                contextMeaning: { type: Type.STRING },
-                exampleSentence: { type: Type.STRING },
-                grammaticalNote: { type: Type.STRING }
-              }
-            }
-          }
-        });
-        
-        const result = JSON.parse(response.text);
-        setAnalysis(result);
-      });
-    } catch (e) {
-      console.error(e);
-      // Fallback for UI if 429 persists after retries
-      setAnalysis({
-        word: cleanWord,
-        translation: "Loading failed",
-        partOfSpeech: "Unknown",
-        contextMeaning: "Please try again later (Rate limit exceeded)",
-        exampleSentence: fullSentence
-      });
-    } finally {
-      setLoading(false);
-    }
   };
 
   const handleBackgroundClick = (e: React.MouseEvent) => {
@@ -404,25 +338,16 @@ const Reader = ({ book, onClose }: { book: Book, onClose: () => void }) => {
     }
   };
 
-  // --- Helper: POS Colors ---
-  const getPosColor = (pos: string) => {
-    const p = pos.toLowerCase();
-    if (p.includes('noun') || p.includes('substantiv')) return 'text-blue-400';
-    if (p.includes('verb')) return 'text-green-400';
-    if (p.includes('adj')) return 'text-amber-400';
-    return 'text-gray-400';
-  };
-
   return (
-    <div className="fixed inset-0 z-50 flex flex-col lg:flex-row bg-[#111318]">
+    <div className="fixed inset-0 z-50 flex flex-col bg-[#111318]">
         
-        {/* === Left/Top Zone: Immersion Lane (65-70%) === */}
+        {/* === Immersion Lane (Full Width) === */}
         <div 
             className={`
-                relative flex-1 lg:flex-[0.65] h-[70%] lg:h-full overflow-hidden flex flex-col transition-colors duration-700
+                relative w-full h-full overflow-hidden flex flex-col transition-colors duration-700
                 ${currentTheme.bg}
             `}
-            onClick={() => setSelectedWord(null)} // Click outside to deselect word highlight
+            onClick={() => setSelectedWord(null)} // Click outside to deselect
         >
             {/* Header (Minimal) */}
             <div className={`flex items-center justify-between px-6 py-4 z-10 ${theme === 'PAPER' ? 'bg-[#fdfcf8]/90' : 'bg-[#18110e]/90'} backdrop-blur-sm transition-colors duration-700`}>
@@ -481,7 +406,7 @@ const Reader = ({ book, onClose }: { book: Book, onClose: () => void }) => {
                                                             key={wIndex}
                                                             onClick={(e) => {
                                                                 e.stopPropagation();
-                                                                handleWordClick(part, sentence);
+                                                                handleWordClick(part);
                                                             }}
                                                             className={`
                                                                 cursor-pointer rounded-[2px] px-0.5 mx-[-1px] transition-all duration-200 border-b-2
@@ -522,117 +447,24 @@ const Reader = ({ book, onClose }: { book: Book, onClose: () => void }) => {
                       <span>{sessionMinutes} min</span>
                     )}
                  </button>
+                 <div className="flex items-center gap-4">
+                     <div className="flex items-center gap-2 text-xs font-medium text-gray-400">
+                        <span>{Math.round(scrollProgress)}%</span>
+                        <div className="w-24 h-1 bg-gray-200 rounded-full overflow-hidden">
+                           <div className="h-full bg-teal-500" style={{ width: `${scrollProgress}%` }} />
+                        </div>
+                     </div>
+                 </div>
             </div>
         </div>
 
-        {/* === Visual Gutter === */}
-        <div className="hidden lg:block w-[4px] bg-white/5 hover:bg-white/20 transition-colors cursor-col-resize z-40" />
-
-        {/* === Right/Bottom Zone: Companion Strip (30-35%) === */}
-        <div className="h-[30%] lg:h-full lg:flex-[0.35] bg-[#111318] border-t lg:border-t-0 lg:border-l border-white/10 flex flex-col shadow-2xl z-30">
-            
-            {/* 1. Context Bar (Always Visible Header) */}
-            <div className="h-16 flex items-center px-6 border-b border-white/5 bg-[#111318]">
-                {loading ? (
-                    <div className="flex items-center gap-3 animate-pulse">
-                         <div className="w-4 h-4 rounded-full bg-teal-500/50" />
-                         <div className="h-4 w-24 bg-white/10 rounded" />
-                    </div>
-                ) : analysis ? (
-                    <div className="flex items-center gap-3 w-full">
-                         <h3 className="text-white font-bold text-lg">{analysis.word}</h3>
-                         <span className="w-1 h-1 rounded-full bg-gray-600" />
-                         <span className={`text-sm font-medium uppercase tracking-wider ${getPosColor(analysis.partOfSpeech)}`}>
-                            {analysis.gender ? `${analysis.gender} ` : ''}{analysis.partOfSpeech}
-                         </span>
-                         <div className="ml-auto flex gap-1">
-                             {[1,2,3].map(i => <div key={i} className="w-1.5 h-1.5 rounded-full bg-teal-500/40" />)}
-                         </div>
-                    </div>
-                ) : (
-                    <div className="flex items-center gap-2 text-gray-500 text-sm italic">
-                        <BookOpen className="w-4 h-4" />
-                        <span>Tap a word to analyze</span>
-                    </div>
-                )}
-            </div>
-
-            {/* Scrollable Content Area for Companion */}
-            <div className="flex-1 overflow-y-auto custom-scrollbar">
-                
-                {/* 2. Live Card */}
-                <div className="p-6 border-b border-white/5 min-h-[200px] flex flex-col justify-center relative group">
-                    {loading ? (
-                        <div className="space-y-4">
-                            <div className="h-8 w-3/4 bg-white/5 rounded animate-pulse" />
-                            <div className="h-4 w-24 bg-white/5 rounded animate-pulse" />
-                        </div>
-                    ) : analysis ? (
-                        <div className="animate-in fade-in slide-in-from-right-4 duration-300">
-                             <div className="flex justify-between items-start mb-2">
-                                <p className="text-3xl text-white font-serif tracking-tight">{analysis.translation}</p>
-                                <button className="p-2 rounded-full bg-white/5 hover:bg-white/10 text-teal-400 transition-colors">
-                                    <Volume2 className="w-5 h-5" />
-                                </button>
-                             </div>
-                             <p className="text-gray-400 text-sm mb-6">{analysis.contextMeaning}</p>
-                             
-                             <div className="pl-4 border-l-2 border-teal-500/30">
-                                <p className="text-gray-300 italic text-lg leading-relaxed">"{analysis.exampleSentence}"</p>
-                             </div>
-                        </div>
-                    ) : (
-                        <div className="text-center text-gray-600">
-                            <p className="mb-2">Select any word to see its translation and context.</p>
-                        </div>
-                    )}
-                </div>
-
-                {/* 3. Word-Lab */}
-                {analysis && (
-                    <div className="p-6 border-b border-white/5">
-                        <div className="flex items-center justify-between mb-4 cursor-pointer group">
-                             <h4 className="text-xs font-bold text-gray-500 uppercase tracking-widest group-hover:text-teal-400 transition-colors">Word Lab</h4>
-                        </div>
-                        <div className="bg-[#0B0A1F] rounded-lg p-4 border border-white/5">
-                            <p className="text-sm text-gray-400 leading-relaxed">
-                                {analysis.grammaticalNote || "No grammatical notes available for this word."}
-                            </p>
-                            <div className="mt-4 pt-4 border-t border-white/5 flex gap-2">
-                                <button className="flex-1 py-2 rounded bg-white/5 hover:bg-white/10 text-xs font-medium text-gray-300 transition-colors">
-                                    Save to Flashcards
-                                </button>
-                                <button className="px-3 py-2 rounded bg-white/5 hover:bg-white/10 text-gray-400 transition-colors">
-                                    <Mic className="w-4 h-4" />
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                )}
-            </div>
-
-            {/* 4. Progress Beacon (Bottom Fixed) */}
-            <div className="p-4 bg-[#0B0A1F] border-t border-white/10">
-                <div className="flex items-center justify-between mb-2 text-xs font-medium text-gray-400">
-                    <span>Chapter Progress</span>
-                    <span className="text-teal-400">{Math.round(scrollProgress)}%</span>
-                </div>
-                <div className="h-1 bg-white/10 rounded-full overflow-hidden mb-4">
-                    <div 
-                        className="h-full bg-teal-500 transition-all duration-700 ease-out" 
-                        style={{ width: `${scrollProgress}%` }}
-                    />
-                </div>
-                <div className="flex items-center justify-between text-xs text-gray-500">
-                    <span>Session Streak</span>
-                    <div className="flex gap-1">
-                        {[1,1,1,0,0].map((v, i) => (
-                            <div key={i} className={`w-1.5 h-4 rounded-sm ${v ? 'bg-teal-500/60' : 'bg-white/10'}`} />
-                        ))}
-                    </div>
-                </div>
-            </div>
-        </div>
+        {/* === Sidebar Overlay === */}
+        {selectedWord && (
+            <WordSidebar 
+                word={selectedWord} 
+                onClose={() => setSelectedWord(null)} 
+            />
+        )}
     </div>
   );
 };
